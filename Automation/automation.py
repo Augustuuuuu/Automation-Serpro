@@ -1,7 +1,9 @@
 import pyautogui as pg
 import logging
 import time
+from datetime import datetime
 import os
+import sys
 from selenium import webdriver
 from selenium.webdriver.edge.service import Service as EdgeService
 from selenium.webdriver.edge.options import Options as EdgeOptions
@@ -10,6 +12,8 @@ from selenium.common.exceptions import TimeoutException
 from selenium.webdriver.common.by import By
 from selenium.webdriver.support.ui import WebDriverWait
 from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.keys import Keys
+from selenium.webdriver.support.ui import Select
 
 # ==============================================================================
 # CONFIGURAÇÃO
@@ -24,8 +28,7 @@ def obter_link_do_usuario():
     titulo = "Automação ALM"
     texto = "Por favor, insira o link completo do ALM e clique em OK:"
     
-    # link_inserido = pg.prompt(text=texto, title=titulo)
-    link_inserido = 'https://alm.serpro/ccm/web/projects/Gest%C3%A3o%20de%20Demandas%20Internas#action=com.ibm.team.workitem.viewWorkItem&id=4792741'
+    link_inserido = pg.prompt(text=texto, title=titulo)
 
     if link_inserido:
         logging.info(f"Link recebido: {link_inserido}")
@@ -60,93 +63,318 @@ def iniciar_navegador_com_perfil_usuario(url):
 # ==============================================================================
 # CLASSE DA PÁGINA ALM
 # ==============================================================================
-class AlmPage:
+class automation:
     def __init__(self, driver):
         self.driver = driver
         self.locators = {
             "resumo": (By.CSS_SELECTOR, ".RichTextEditorWidget.cke_editable.cke_contents_ltr"),
             "numero_demanda": (By.CLASS_NAME, "TitleText"),
-            "solicitante": (By.XPATH, "//span[@class='ValueLabelHolder']")  # pega o primeiro
+            "solicitante": (By.XPATH, "//span[@class='ValueLabelHolder']"),
+            "data_criacao": (By.CLASS_NAME, "TimeLabel"),
+            "codigo_servico": (By.XPATH, "//div[@aria-label='Código de Serviço']"),
+            "responsavel": (By.XPATH, "//span[@class='ValueLabelHolder']"),
+            "tipo_demanda": (By.XPATH, "//span[@class='ValueLabelHolder']"),
+            "aba_atendimento": (By.XPATH, "//a[@title='Atendimento']"),
+            "aba_demanda": (By.XPATH, "//span[text()='Demanda']/parent::button"),
+            "aba_incluirDemanda": (By.ID, "IncluirDemanda"),
+            "nome_demanda": (By.ID, "nome"),
+            "descricao_demanda":  (By.ID, "descricao"),
+            "nomeResponsavel": (By.ID, "nomeResponsavel"),
+            "numero_da_demanda": (By.ID, "numeroDemanda"),
+            "salvar": (By.ID, "confirmar"),
+            "criarContagem": (By.CLASS_NAME, "swal2-confirm btn btn-primary btn-pills ml-2"),
+            "descricao_contagem": (By.ID, "descricao"),
+            "proposito": (By.ID, "proposito"),
+            "escopo": (By.ID, "escopo"),
+            "titulo": (By.CLASS_NAME, "title-5 align-middle"),
+            "url": (By.CSS_SELECTOR, "input[dojoattachpoint='_urlField']"),
+            "rotulo" : (By.CSS_SELECTOR, "input[dojoattachpoint='_textField']"),
+            "tamanhoPF": (By.XPATH, "//input[@aria-label='Tamanho (PF)']"),
+            "comentario": (By.CLASS_NAME, "RichTextEditorWidget ViewBorder com-ibm-team-workitem-shared-RichText cke_editable cke_editable_inline cke_contents_ltr cke_show_placeholder")
         }
 
-    def _obter_texto_do_elemento(self, nome_do_localizador, timeout=20):
+    def obter_textoElemento(self, nome_do_localizador, timeout=20):
         try:
             localizador = self.locators.get(nome_do_localizador)
             if not localizador:
-                logging.error(f"Localizador '{nome_do_localizador}' não definido.")
+                logging.error(f"❌ Localizador '{nome_do_localizador}' não definido.")
                 return None
-            
-            logging.info(f"Aguardando campo '{nome_do_localizador}' (timeout={timeout}s)...")
+
+            logging.info(f"🔎 Aguardando campo '{nome_do_localizador}' (timeout={timeout}s)...")
             wait = WebDriverWait(self.driver, timeout)
-    
-            if nome_do_localizador == "solicitante":
-                # Exemplo: pegar o segundo ValueLabelHolder, que você disse ser o correto
-                # Ajuste aqui se quiser outro índice ou seletor mais específico
-                elementos = wait.until(EC.presence_of_all_elements_located(localizador))
-                if len(elementos) >= 2:
-                    texto_elemento = elementos[1].text.strip()  # índice 1 = segundo elemento
-                elif elementos:
-                    texto_elemento = elementos[0].text.strip()
-                else:
-                    logging.error(f"Nenhum elemento encontrado para '{nome_do_localizador}'")
-                    return None
+            elementos = wait.until(EC.presence_of_all_elements_located(localizador))
+
+            # Lógica por nome
+            indices = {
+                "solicitante": 1,
+                "tipo_demanda": 3,
+                "responsavel": 2,
+            }
+            index = indices.get(nome_do_localizador, 0)
+
+            if len(elementos) > index:
+                texto_elemento = elementos[index].text.strip()
+            elif elementos:
+                texto_elemento = elementos[0].text.strip()
             else:
-                # Para os demais, pega o único elemento visível
-                elemento = wait.until(EC.visibility_of_element_located(localizador))
-                texto_elemento = elemento.text.strip()
-            
-            logging.info(f"Texto de '{nome_do_localizador}': {texto_elemento[:100]}...")
+                logging.error(f"⚠️ Nenhum elemento encontrado para '{nome_do_localizador}'")
+                return None
+
+            logging.info(f"✅ Texto de '{nome_do_localizador}': {texto_elemento[:100]}...")
             return texto_elemento
-    
+
         except TimeoutException:
-            logging.error(f"Elemento '{nome_do_localizador}' não foi encontrado após {timeout} segundos.")
+            logging.error(f"⏰ Timeout: elemento '{nome_do_localizador}' não foi encontrado após {timeout} segundos.")
             return None
         except Exception as e:
-            logging.error(f"Erro inesperado ao buscar '{nome_do_localizador}': {e}")
+            logging.error(f"💥 Erro inesperado ao buscar '{nome_do_localizador}': {e}")
             return None
+    def clicar_botao(self, nome_do_botao, timeout=20):
+        try:
+            localizador = self.locators.get(nome_do_botao)
+            if not localizador:
+                logging.error(f"Localizador '{nome_do_botao}' não definido.")
+                return None
 
+            logging.info(f"Aguardando botão '{nome_do_botao}' (timeout={timeout}s)...")
+            wait = WebDriverWait(self.driver, timeout)
+            elemento = wait.until(EC.presence_of_element_located(localizador))
 
-    def obter_resumo(self):
-        return self._obter_texto_do_elemento("resumo")
+            # Rola para o elemento
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elemento)
+            time.sleep(0.5)  # aguarda possível animação
 
-    def obter_numero_demanda(self):
-        return self._obter_texto_do_elemento("numero_demanda")
+            # Garante que o elemento está visível e habilitado
+            wait.until(EC.element_to_be_clickable(localizador))
 
-    def obter_solicitante(self):
-        return self._obter_texto_do_elemento("solicitante")
+            try:
+                elemento.click()
+                logging.info(f"✅ Clique realizado no botão '{nome_do_botao}' com .click().")
+            except Exception as e_click:
+                logging.warning(f"⚠️ Falha no .click(): {e_click}. Tentando via JavaScript.")
+                self.driver.execute_script("arguments[0].click();", elemento)
+                logging.info(f"✅ Clique forçado com JavaScript no botão '{nome_do_botao}'.")
 
+            return True
+
+        except TimeoutException:
+            logging.error(f"❌ Botão '{nome_do_botao}' não encontrado após {timeout} segundos.")
+            return None
+        except Exception as e:
+            logging.error(f"❌ Erro inesperado ao clicar no botão '{nome_do_botao}': {e}")
+            return None
+    def preencher_campo(self, nome_do_campo, texto, timeout=20):
+        try:
+            localizador = self.locators.get(nome_do_campo)
+            if not localizador:
+                logging.error(f"Localizador '{nome_do_campo}' não definido.")
+                return None
+
+            logging.info(f"Aguardando campo '{nome_do_campo}' (timeout={timeout}s)...")
+            wait = WebDriverWait(self.driver, timeout)
+            campo = wait.until(EC.element_to_be_clickable(localizador))
+            self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", campo)
+
+            campo.clear()
+            campo.send_keys(texto)
+            logging.info(f"✅ Preenchido '{nome_do_campo}' com: {texto}")
+            return True
+
+        except TimeoutException:
+            logging.error(f"❌ Campo '{nome_do_campo}' não encontrado após {timeout} segundos.")
+            return None
+        except Exception as e:
+            logging.error(f"❌ Erro ao preencher o campo '{nome_do_campo}': {e}")
+            return None
+    def selecionar_Dropdown(self, placeholder_texto, texto_opcao, timeout=10):
+        try:
+            wait = WebDriverWait(self.driver, timeout)
+
+            # Clica no dropdown pelo placeholder
+            ng_select = wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, f"ng-select[placeholder='{placeholder_texto}']"))
+            )
+            ng_select.click()
+
+            # Localiza o input de pesquisa dentro do dropdown aberto
+            input_pesquisa = wait.until(
+                EC.element_to_be_clickable((By.CSS_SELECTOR, f"ng-select[placeholder='{placeholder_texto}'] input[type='text']"))
+            )
+            input_pesquisa.clear()
+            input_pesquisa.send_keys(texto_opcao)
+            time.sleep(1)  # espera as opções aparecerem
+
+            # Pressiona ENTER para confirmar a seleção
+            input_pesquisa.send_keys(Keys.ENTER)
+
+            logging.info(f"✅ Opção '{texto_opcao}' selecionada no dropdown '{placeholder_texto}' com ENTER.")
+            return True
+
+        except Exception as e:
+            logging.error(f"❌ Erro ao selecionar '{texto_opcao}' no dropdown '{placeholder_texto}': {e}")
+            return False
+    def preencher_dataIndice(self, index, data, timeout=10):
+        try:
+            wait = WebDriverWait(self.driver, timeout)
+            campos = wait.until(
+                EC.presence_of_all_elements_located((By.CSS_SELECTOR, "input[placeholder='__/__/____']"))
+            )
+            if index >= len(campos):
+                logging.error(f"❌ Índice {index} inválido. Só existem {len(campos)} campos.")
+                return False    
+
+            campos[index].clear()
+            campos[index].send_keys(data)
+            campos[index].send_keys(Keys.TAB)
+            logging.info(f"📅 Data '{data}' preenchida no campo de índice {index}")
+            return True
+        except Exception as e:
+            logging.error(f"❌ Erro ao preencher campo de data no índice {index}: {e}")
+            return False
+    def selecionar_dropdown_padrão(self, id_do_select, texto_ou_valor, por_valor=True, timeout=10):
+        try:
+            wait = WebDriverWait(self.driver, timeout)
+            select_element = wait.until(EC.presence_of_element_located((By.ID, id_do_select)))
+            select = Select(select_element) 
+
+            if por_valor:
+                select.select_by_value(texto_ou_valor)
+                logging.info(f"✅ Selecionado valor '{texto_ou_valor}' no select '{id_do_select}'")
+            else:
+                select.select_by_visible_text(texto_ou_valor)
+                logging.info(f"✅ Selecionado texto '{texto_ou_valor}' no select '{id_do_select}'")
+            return True
+        except Exception as e:
+            logging.error(f"❌ Erro ao selecionar no dropdown '{id_do_select}': {e}")
+            return False
 
 # ==============================================================================
 # EXECUÇÃO PRINCIPAL
 # ==============================================================================
+# EXECUÇÃO PRINCIPAL
 if __name__ == "__main__":
-    logging.info(">>> INICIANDO AUTOMAÇÃO ALM <<<")
-    
     link_alm = obter_link_do_usuario()
-    
     if link_alm:
         navegador = iniciar_navegador_com_perfil_usuario(link_alm)
-
         if navegador:
             try:
-                pagina_alm = AlmPage(navegador)
+                automacao = automation(navegador)
 
                 logging.info("Aguardando 8 segundos para a página carregar...")
                 time.sleep(8)
 
                 logging.info("--- INICIANDO EXTRAÇÃO DE DADOS ---")
-                resumo = pagina_alm.obter_resumo()
-                numero_demanda = pagina_alm.obter_numero_demanda()
-                solicitante = pagina_alm.obter_solicitante()
-                logging.info("--- EXTRAÇÃO FINALIZADA ---")
+                # Extraindo o resumo
+                resumo = automacao.obter_textoElemento("resumo")
+                # Extraindo o número da demanda e formatando
+                numero_demanda = automacao.obter_textoElemento("numero_demanda")
+                numeroDemanda = numero_demanda[15:].strip()
+                # Extraindo o solicitante
+                solicitante = automacao.obter_textoElemento("solicitante")
+                # Extraindo a data no ALM e fazendo a formatação
+                data_criacao = automacao.obter_textoElemento("data_criacao")
+                meses = {
+                    'jan': '01', 'fev': '02', 'mar': '03', 'abr': '04', 'mai': '05',
+                    'jun': '06', 'jul': '07', 'ago': '08', 'set': '09', 'out': '10',
+                    'nov': '11', 'dez': '12'
+                }
 
-                mensagem_final = "INFORMAÇÕES EXTRAÍDAS DA DEMANDA:\n\n"
-                mensagem_final += f"Número da Demanda: {numero_demanda or 'Não encontrado'}\n"
-                mensagem_final += f"Solicitante: {solicitante or 'Não encontrado'}\n"
-                mensagem_final += "--------------------------------------\n"
-                mensagem_final += f"Resumo: {resumo or 'Não encontrado'}\n"
+                # Quebrar a string por espaços
+                partes = data_criacao.split()
 
-                pg.alert(mensagem_final, "Relatório da Demanda")
+                # partes = ['12', 'de', 'mai', 'de', '2025', '17:40:27']
+                # Pegar apenas o dia, mês (convertido) e ano
+                dia = partes[0]
+                mes = meses.get(partes[2], partes[2])
+                ano = partes[4]
+
+                # Formatando
+                data_formatada = f"{dia}/{mes}/{ano}"
+                # Extraindo o código de serviço no alm
+                codigo_servico = automacao.obter_textoElemento("codigo_servico")
+                # Extraindo o tipo de demanda
+                tipo_demanda = automacao.obter_textoElemento("tipo_demanda")
+                # Clicando na aba de atendimento
+                automacao.clicar_botao("aba_atendimento")
+                # Extraindo o resposável da demanda
+                responsavel = automacao.obter_textoElemento("responsavel")
+                # Abrindo nova aba para acessar o Pontua
+                navegador.execute_script("window.open('https://pontua.estaleiro.serpro.gov.br/pontua-web/#/dashboard','_blank');")
+                navegador.switch_to.window(navegador.window_handles[-1])
+                # Clicando no botão de demanda
+                automacao.clicar_botao("aba_demanda")
+                # Clicando no botão de incluir demanda
+                automacao.clicar_botao("aba_incluirDemanda")
+                # Preenchendo demanda no Pontua
+                automacao.preencher_campo("nome_demanda", f"{numeroDemanda}: {resumo}")
+                automacao.selecionar_Dropdown("selecionar Fronteira/Aplicação", f"{codigo_servico[-5:]}")
+                automacao.preencher_campo("descricao_demanda", f"Solicitação: {resumo}")
+                automacao.selecionar_Dropdown("selecionar processo", "Ágil")
+                if tipo_demanda == "Apuração":
+                    automacao.selecionar_Dropdown("selecionar tipo de demanda", "Apuração Especial (AESP)")
+                elif tipo_demanda == "Melhoria":
+                    automacao.selecionar_Dropdown("selecionar tipo de demanda", "Manutenção Corretiva")
+                else:
+                    automacao.selecionar_Dropdown("selecionar tipo de demanda", f"{pg.prompt('Digite o tipo de demanda e aperte OK:', 'Automação')}")
+                automacao.preencher_dataIndice(0,data_formatada)
+                data_atual = datetime.now()
+                data_formatada = data_atual.strftime("%d/%m/%Y")
+                automacao.preencher_dataIndice(1,data_formatada)
+                automacao.preencher_campo("nomeResponsavel", responsavel)
+                automacao.preencher_campo("numero_da_demanda", numeroDemanda)
+                automacao.selecionar_Dropdown("selecionar plataforma", "Web")
+                if codigo_servico[-5:] == "80728":
+                    automacao.selecionar_Dropdown("selecionar linguagem", "JAVA")
+                else:
+                    automacao.selecionar_Dropdown("selecionar linguagem", "Low-Code")
+                automacao.selecionar_Dropdown("selecionar banco de dados", "MySql")
+                resposta = pg.confirm(
+                    text='Deseja continuar com a automação?',
+                    title='Confirmação',
+                    buttons=['OK', 'Cancelar']
+                )
+
+                if resposta == 'OK':
+                    print("👉 Continuando com a automação...")
+                    # segue normalmente
+                else:
+                    print("🚫 Operação cancelada pelo usuário.")
+                    sys.exit()
+                automacao.clicar_botao("salvar")
+                automacao.clicar_botao("criarContagem")
+                automacao.preencher_campo("descricao_contagem", f"Contagem da {numero_demanda}")
+                automacao.selecionar_dropdown_padrão("tipoContagem", "1: MANUTENCAO", por_valor=True)
+                automacao.selecionar_dropdown_padrão("metodoContagem", "5: CONTAGEM_SFP", por_valor=True)
+                automacao.selecionar_Dropdown("selecionar Roteiro", "SERPRO V3")
+                automacao.preencher_campo("proposito", "Fornecer o tamanho funcional de uma demanda de manutenção da aplicação.")
+                automacao.preencher_campo("escopo", "Fornecer o tamanho funcional de uma demanda de manutenção da aplicação.")
+                resposta = pg.confirm(
+                    text='Deseja continuar com a automação?',
+                    title='Confirmação',
+                    buttons=['OK', 'Cancelar']
+                )
+
+                if resposta == 'OK':
+                    print("👉 Continuando com a automação...")
+                    # segue normalmente
+                else:
+                    print("🚫 Operação cancelada pelo usuário.")
+                    sys.exit()
+                automacao.clicar_botao("salvar")
+                contagem = automacao.obter_textoElemento("titulo")
+                if contagem:
+                    link_pontua = navegador.current_url
+                navegador.switch_to.window(navegador.window_handles[0])
+                pf = pg.prompt("Quantidade de PF: ", "Pontos de função")
+                mensagem = f"Contagem da {numero_demanda} em método SFP = {pf} PF.\n"
+                mensagem += f"Estimativa realizada em {data_formatada} pelo estgiário Augusto Saboia\n"
+                automacao.preencher_campo("comentario", mensagem).send_keys(Keys.CONTROL, 'l')
+                automacao.preencher_campo("url", link_pontua)
+                automacao.preencher_campo("rotulo", "Link do Pontua")
+                automacao.clicar_botao("aba_atendimento")
+                automacao.preencher_campo("tamanhoPF", pf)
+                pg.alert("FIM")
+                logging.info("--- EXTRAÇÃO FINALIZADA ---")     
                 pg.alert("Execução finalizada! O navegador será fechado.", "Encerrando")
                 time.sleep(2)
 
@@ -155,5 +383,3 @@ if __name__ == "__main__":
             finally:
                 logging.info("Fechando o navegador.")
                 navegador.quit()
-
-    logging.info(">>> FIM DA EXECUÇÃO <<<")
