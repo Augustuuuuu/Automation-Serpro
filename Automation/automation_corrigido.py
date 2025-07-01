@@ -83,6 +83,7 @@ class automation:
             "nomeResponsavel": (By.ID, "nomeResponsavel"),
             "numero_da_demanda": (By.ID, "numeroDemanda"),
             "salvar": (By.ID, "confirmar"),
+            "incluirFuncoes": (By.ID, "incluirFuncoes"),
             "criarContagem": (By.CSS_SELECTOR,"button.swal2-confirm.btn.btn-primary.btn-pills.ml-2"),
             "descricao_contagem": (By.ID, "descricao"),
             "proposito": (By.ID, "proposito"),
@@ -92,7 +93,8 @@ class automation:
             "rotulo" : (By.CSS_SELECTOR, "input[dojoattachpoint='_textField']"),
             "tamanhoPF": (By.XPATH, "//input[@aria-label='Tamanho (PF)']"),
             "aba_visaogeral": (By.XPATH, "//a[@title='Visão Geral']"),
-            "comentario": (), # <-- 
+            "salvar_link": (By.CSS_SELECTOR, "button[dojoattachpoint='_okButton']"),
+            "comentario": (By.XPATH, "//div[contains(@class, 'RichTextEditorWidget') and contains(@aria-label, 'Coment')]"),
 
         }
 
@@ -147,7 +149,7 @@ class automation:
     
             # Rola até o botão (opcional, mas ajuda)
             self.driver.execute_script("arguments[0].scrollIntoView({block: 'center'});", elemento)
-            time.sleep(0.5)
+            # sleep removido, já está aguardando via WebDriverWait
     
             try:
                 elemento.click()
@@ -205,7 +207,7 @@ class automation:
             )
             input_pesquisa.clear()
             input_pesquisa.send_keys(texto_opcao)
-            time.sleep(1)  # espera as opções aparecerem
+            wait.until(EC.presence_of_element_located((By.CSS_SELECTOR, "div.ng-option")))  # aguarda opções aparecerem
 
             # Pressiona ENTER para confirmar a seleção
             input_pesquisa.send_keys(Keys.ENTER)
@@ -250,24 +252,6 @@ class automation:
         except Exception as e:
             logging.error(f"❌ Erro ao selecionar no dropdown '{id_do_select}': {e}")
             return False
-    def preencher_campo_comentario(self, texto, timeout=20):
-        try:
-            wait = WebDriverWait(self.driver, timeout)
-            campos = wait.until(EC.presence_of_all_elements_located(
-                (By.XPATH, "//div[contains(@class, 'RichTextEditorWidget') and contains(@aria-label, 'Coment')]")))
-            for campo in campos:
-                if "Coment" in campo.get_attribute("aria-label"):
-                    campo.click()
-                    time.sleep(0.5)
-                    campo.send_keys(texto)
-                    logging.info("✅ Comentário preenchido com sucesso!")
-                    return True
-            logging.warning("⚠️ Campo de comentário não encontrado.")
-            return False
-        except Exception as e:
-            logging.error(f"❌ Erro ao preencher o campo de comentário: {e}")
-            return False
-
 
 # Função de execução
 def executar_automacao(link_alm):
@@ -279,7 +263,9 @@ def executar_automacao(link_alm):
         automacao = automation(navegador)
 
         print("✅ [1/12] Aguardando o carregamento da página inicial...")
-        time.sleep(8)
+        WebDriverWait(navegador, 20).until(
+            EC.presence_of_element_located((By.CLASS_NAME, "TitleText"))
+        )
 
         print("✅ [2/12] Extraindo informações do ALM...")
         resumo = automacao.obter_textoElemento("resumo")
@@ -345,16 +331,17 @@ def executar_automacao(link_alm):
         if resposta != 'OK':
             print("🚫 Operação cancelada pelo usuário.")
             sys.exit()
-
         print("✅ [7/12] Criando contagem...")
-        time.sleep(5)
         automacao.clicar_botao("salvar")
         automacao.clicar_botao("criarContagem")
-        time.sleep(2)
-        automacao.preencher_campo("descricao_contagem", f"Contagem da {numero_demanda}")
+        WebDriverWait(navegador, 20).until(
+            EC.visibility_of_element_located((By.ID, "descricao"))
+        )
+        
         automacao.selecionar_dropdown_padrão("tipoContagem", "1: MANUTENCAO", por_valor=True)
-        automacao.selecionar_dropdown_padrão("metodoContagem", "5: CONTAGEM_SFP", por_valor=True)
         automacao.selecionar_Dropdown("selecionar Roteiro", "SERPRO V3")
+        automacao.selecionar_dropdown_padrão("metodoContagem", "5: CONTAGEM_SFP", por_valor=True)
+        automacao.preencher_campo("descricao_contagem", f"Contagem da {numero_demanda}")
         automacao.preencher_campo("proposito", "Fornecer o tamanho funcional de uma demanda de manutenção da aplicação.")
         automacao.preencher_campo("escopo", "Fornecer o tamanho funcional de uma demanda de manutenção da aplicação.")
 
@@ -366,38 +353,34 @@ def executar_automacao(link_alm):
 
         print("✅ [9/12] Salvando contagem...")
         automacao.clicar_botao("salvar")
-
+        automacao.clicar_botao("incluirFuncoes")
         link_pontua = navegador.current_url
 
         print("✅ [10/12] Retornando ao ALM...")
         navegador.switch_to.window(navegador.window_handles[0])
         automacao.clicar_botao("aba_visaogeral")
         pf = pg.prompt("Quantidade de PF: ", "Pontos de função")
-
         print("✅ [11/12] Preenchendo informações finais no ALM...")
         mensagem = f"Contagem da {numero_demanda} em método SFP = {pf} PF.\n"
-        mensagem += f"Estimativa realizada em {data_formatada} pelo estgiário Augusto Saboia\n"
-        automacao.preencher_campo_comentario(mensagem)
-        automacao.clicar_botao("comentario")
-        time.sleep(2)
-        pg.hotkey("ctrl", "l")
+        mensagem += f"Estimativa realizada em {data_hoje} pelo estagiário Augusto Saboia\n"
+        automacao.preencher_campo("comentario", mensagem)
+        automacao.preencher_campo("comentario", f"{mensagem} {Keys.CONTROL + "l"}")
         automacao.preencher_campo("url", link_pontua)
         automacao.preencher_campo("rotulo", "Link do Pontua")
+        automacao.clicar_botao("salvar_link")
         automacao.clicar_botao("aba_atendimento")
         automacao.preencher_campo("tamanhoPF", pf)
 
         print("✅ [12/12] Finalizando...")
         logging.info("--- EXTRAÇÃO FINALIZADA ---")
         pg.alert("Execução finalizada! O navegador será fechado.", "Encerrando")
-        time.sleep(2)
 
     except Exception as e:
         logging.error(f"Erro durante a automação: {e}")
         pg.alert(f"Ocorreu um erro durante a execução: {e}", "Erro")
     finally:
-        logging.info("Fechando o navegador.")
+        navegador.close()
         navegador.quit()
-
 
 # EXECUÇÃO PRINCIPAL
 if __name__ == "__main__":
