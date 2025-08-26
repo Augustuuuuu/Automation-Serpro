@@ -49,7 +49,9 @@ def iniciar_navegador_com_perfil_usuario(url):
         edge_options = EdgeOptions()
         user_data_dir = os.path.join(os.path.expanduser("~"), "AppData", "Local", "Microsoft", "Edge", "User Data")
         edge_options.add_argument(f"user-data-dir={user_data_dir}")
-        service = EdgeService(EdgeChromiumDriverManager().install())
+        # Caminho fixo para o driver local
+        driver_path = r"C:\WebDriver\Edge\msedgedriver.exe"
+        service = EdgeService(executable_path=driver_path)
         driver = webdriver.Edge(service=service, options=edge_options)
         driver.get(url)
         driver.maximize_window()
